@@ -4,16 +4,20 @@
     "version": "1.0",
     "description": "Download all PDF links from a Canvas webpage.",
     "permissions": ["downloads", "activeTab", "scripting", "storage"],
-    "action": {
-      "default_popup": "popup.html"
-    },
     "content_scripts": [
       {
         "matches": ["<all_urls>"],
-        "js": ["content.js"],
+        "js": [
+            "lib/jszip.min.js",
+            "lib/FileSaver.min.js",
+            "content.js"
+        ],
         "type": "module"
       }
     ],
+    "background": {
+        "service_worker": "background.js"
+    },
     "content_security_policy": {
       "extension_pages": "script-src 'self'; object-src 'self';"
     },

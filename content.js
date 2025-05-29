@@ -23,9 +23,28 @@ function injectCSS() {
     document.head.appendChild(style);
 }
 
-function injectCheckboxesAndPreview() {
-    const items = document.querySelectorAll('li.context_module_item');
+function injectHTML() {
+    // Injecting Download button
+    const headerBar = document.querySelector('div.header-bar');
+    const download = document.createElement('p');
+    download.innerHTML = "Download Attachments";
+    download.classList.add('btn');
+    download.id = 'download-button';
 
+    // Injecting Select All button
+    const selectAll = document.createElement('p');
+    selectAll.innerHTML = "Select All";
+    selectAll.classList.add('btn');
+    selectAll.classList.add('select-all-button');
+
+    headerBar.insertBefore(download, headerBar.firstChild);
+    headerBar.insertBefore(selectAll, headerBar.firstChild);
+
+    document.getElementById('download-button').addEventListener('click', downloadSelectedPdfsAsZip);
+    
+
+    // Injecting Checkbox and Preview Button
+    const items = document.querySelectorAll('li.context_module_item');
     items.forEach((item) => {
         // If not an attachment, skip it
         if (!item.classList.contains('attachment')) return;
@@ -143,6 +162,32 @@ async function initialiseWebpage() {
     chrome.storage.local.set({ pdfLinks });
 }
 
+async function downloadSelectedPdfsAsZip() {
+    const checkedItems = document.querySelectorAll('input.canvas-module-checkbox:checked');
+
+    const selectedFiles = Array.from(checkedItems).map((checkbox, i) => {
+        const parentLi = checkbox.closest('li.context_module_item');
+        const pdfUrl = parentLi?.getAttribute('data-pdf-url');
+        const filename = parentLi?.querySelector('.item_name')?.textContent.trim() || `file${i + 1}.pdf`;
+
+        return pdfUrl ? { url: pdfUrl, filename } : null;
+    }).filter(Boolean);
+
+    if (selectedFiles.length === 0) {
+        alert("No PDFs selected.");
+        return;
+    }
+
+    console.log(selectedFiles);
+
+    chrome.runtime.sendMessage({
+        type: "ZIP_AND_DOWNLOAD",
+        files: selectedFiles
+    });
+}
+
+
+
 
 window.addEventListener("load", () => {
     chrome.storage.local.clear(() => {
@@ -150,7 +195,7 @@ window.addEventListener("load", () => {
     });
     injectCSS();
     setTimeout(() => {
-        injectCheckboxesAndPreview();
+        injectHTML();
         initialiseWebpage();
     }, 1000); 
 });
