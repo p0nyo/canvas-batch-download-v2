@@ -35,13 +35,14 @@ function injectHTML() {
     const selectAll = document.createElement('p');
     selectAll.innerHTML = "Select All";
     selectAll.classList.add('btn');
-    selectAll.classList.add('select-all-button');
+    selectAll.id = 'select-all-button';
 
     headerBar.insertBefore(download, headerBar.firstChild);
     headerBar.insertBefore(selectAll, headerBar.firstChild);
 
     document.getElementById('download-button').addEventListener('click', downloadSelectedPdfsAsZip);
-    
+    document.getElementById('select-all-button').addEventListener('click', toggleAllCheckboxes);
+
 
     // Injecting Checkbox and Preview Button
     const items = document.querySelectorAll('li.context_module_item');
@@ -127,7 +128,9 @@ function extractPdfLinkFromHTML(html, baseUrl) {
     if (anchor) {
         const href = anchor.getAttribute("href");
         const pdfUrl = new URL(href, baseUrl).toString();
-        return pdfUrl;
+        const filename = anchor.textContent.trim().replace(/^Download\s+/i, "");
+
+        return { pdfUrl, filename };
     }
 
     return null;
@@ -139,55 +142,66 @@ async function initialiseWebpage() {
 
     const pdfLinks = modulePages
         .map(({ html, url }, index) => {
-        const pdfUrl = extractPdfLinkFromHTML(html, url);
-        if (!pdfUrl) return null;
-        return { text: moduleItems[index].text, url: pdfUrl };
+        const result = extractPdfLinkFromHTML(html, url);
+        if (!result) return null;
+        const { pdfUrl, filename } = result;
+        if (!pdfUrl || !filename ) return null;
+        return { text: moduleItems[index].text, url: pdfUrl, filename: filename };
         })
         .filter(link => link !== null);
 
     console.log("Found PDF Links:", pdfLinks);
 
     // Store PDF URLs as data attributes on matching DOM elements
-    pdfLinks.forEach(({ text, url }) => {
+    pdfLinks.forEach(({ text, url, filename }) => {
         const moduleItem = [...document.querySelectorAll('li.context_module_item')].find(li => {
         return li.textContent.includes(text);
         });
 
         if (moduleItem) {
-        moduleItem.setAttribute('data-pdf-url', url);
+            moduleItem.setAttribute('data-pdf-url', url);
+            moduleItem.setAttribute('data-pdf-filename', filename);
         }
     });
-
-    // Optionally save to chrome.storage too
-    chrome.storage.local.set({ pdfLinks });
 }
 
 async function downloadSelectedPdfsAsZip() {
     const checkedItems = document.querySelectorAll('input.canvas-module-checkbox:checked');
-
-    const selectedFiles = Array.from(checkedItems).map((checkbox, i) => {
-        const parentLi = checkbox.closest('li.context_module_item');
-        const pdfUrl = parentLi?.getAttribute('data-pdf-url');
-        const filename = parentLi?.querySelector('.item_name')?.textContent.trim() || `file${i + 1}.pdf`;
-
-        return pdfUrl ? { url: pdfUrl, filename } : null;
-    }).filter(Boolean);
-
-    if (selectedFiles.length === 0) {
+    if (checkedItems.length === 0) {
         alert("No PDFs selected.");
         return;
     }
 
-    console.log(selectedFiles);
+    const files = Array.from(checkedItems).map((checkbox, i) => {
+        const parentLi = checkbox.closest('li.context_module_item');
+        const url = parentLi?.getAttribute('data-pdf-url');
+        const filename = parentLi?.getAttribute('data-pdf-filename');
+        console.log(url);
+        console.log(filename);
+        return { url, filename };
+    }).filter(file => file.url); // remove any null urls
 
+    if (files.length === 0) {
+        alert("No valid file URLs found.");
+        return;
+    }
+
+    console.log(files);
+    // Send the file list to background
     chrome.runtime.sendMessage({
-        type: "ZIP_AND_DOWNLOAD",
-        files: selectedFiles
+        action: "fetchAndZip",
+        files: files
     });
 }
 
+function toggleAllCheckboxes() {
+    const checkboxes = document.querySelectorAll('input.canvas-module-checkbox');
+    const allChecked = Array.from(checkboxes).every(cb => cb.checked);
 
-
+    checkboxes.forEach(cb => {
+        cb.checked = !allChecked; // uncheck if all are checked, otherwise check all
+    });
+}
 
 window.addEventListener("load", () => {
     chrome.storage.local.clear(() => {
